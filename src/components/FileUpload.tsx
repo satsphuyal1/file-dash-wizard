@@ -24,7 +24,7 @@ interface ScrapRecord {
   [key: string]: any;
 }
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://3.220.174.31:8000';
 
 export const FileUpload = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
