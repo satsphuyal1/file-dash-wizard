@@ -12,9 +12,9 @@ interface UploadedFile {
 
 interface UploadedFileInfo {
   id: string;
-  filename?: string;
-  name?: string;
-  upload_date: string;
+  output_filename?: string;
+  input_filename?: string;
+  created_date: string;
   size?: number;
 }
 
@@ -25,6 +25,8 @@ interface ScrapRecord {
 }
 
 const API_BASE_URL = 'http://3.220.174.31:8000';
+// const API_BASE_URL = 'http://127.0.0.1:8000';
+
 
 export const FileUpload = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
@@ -269,16 +271,16 @@ export const FileUpload = () => {
                       <td className="p-3">
                         {filesList[index] ? (
                           <button
-                            onClick={() => downloadFile(filesList[index].id, filesList[index].filename || filesList[index].name || 'file', 'input')}
+                            onClick={() => downloadFile(filesList[index].id, filesList[index].input_filename || filesList[index].input_filename || 'file', 'input')}
                             className="flex items-center gap-2 text-left hover:text-primary transition-colors w-full group"
                           >
                             <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                             <div className="min-w-0 flex-1">
                               <p className="font-medium text-sm truncate text-card-foreground group-hover:underline">
-                                {filesList[index].filename || filesList[index].name || 'Unknown file'}
+                                {filesList[index].input_filename || filesList[index].input_filename || 'Unknown file'}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(filesList[index].upload_date).toLocaleDateString()}
+                                {new Date(filesList[index].created_date).toLocaleDateString()}
                               </p>
                             </div>
                             <Download className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -290,16 +292,16 @@ export const FileUpload = () => {
                       <td className="p-3">
                         {outputFilesList[index] ? (
                           <button
-                            onClick={() => downloadFile(outputFilesList[index].id, outputFilesList[index].filename || outputFilesList[index].name || 'output', 'output')}
+                            onClick={() => downloadFile(outputFilesList[index].id, outputFilesList[index].output_filename || outputFilesList[index].output_filename || 'output', 'output')}
                             className="flex items-center gap-2 text-left hover:text-primary transition-colors w-full group"
                           >
                             <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                             <div className="min-w-0 flex-1">
                               <p className="font-medium text-sm truncate text-card-foreground group-hover:underline">
-                                {outputFilesList[index].filename || outputFilesList[index].name || 'Unknown file'}
+                                {outputFilesList[index].output_filename || outputFilesList[index].output_filename || 'Unknown file'}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(outputFilesList[index].upload_date).toLocaleDateString()}
+                                {new Date(outputFilesList[index].created_date).toLocaleDateString()}
                               </p>
                             </div>
                             <Download className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
