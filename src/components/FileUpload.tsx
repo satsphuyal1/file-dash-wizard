@@ -30,6 +30,7 @@ export const FileUpload = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [filesList, setFilesList] = useState<UploadedFileInfo[]>([]);
+  const [outputFilesList, setOutputFilesList] = useState<UploadedFileInfo[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [showFilesList, setShowFilesList] = useState(false);
   const [scrapRecords, setScrapRecords] = useState<ScrapRecord[]>([]);
@@ -39,10 +40,18 @@ export const FileUpload = () => {
   const fetchFilesList = async () => {
     setIsLoadingFiles(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/files/`);
-      if (!response.ok) throw new Error('Failed to fetch files');
-      const data = await response.json();
-      setFilesList(data);
+      const [inputResponse, outputResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/files/`),
+        fetch(`${API_BASE_URL}/files/output/`)
+      ]);
+      
+      if (!inputResponse.ok || !outputResponse.ok) throw new Error('Failed to fetch files');
+      
+      const inputData = await inputResponse.json();
+      const outputData = await outputResponse.json();
+      
+      setFilesList(inputData);
+      setOutputFilesList(outputData);
     } catch (error: any) {
       toast({
         title: "Failed to load files",
@@ -182,9 +191,13 @@ export const FileUpload = () => {
     }
   };
 
-  const downloadFile = async (fileId: string, filename: string) => {
+  const downloadFile = async (fileId: string, filename: string, type: 'input' | 'output' = 'input') => {
     try {
-      const response = await fetch(`${API_BASE_URL}/download/${fileId}/`);
+      const endpoint = type === 'output' 
+        ? `${API_BASE_URL}/download/output/${fileId}` 
+        : `${API_BASE_URL}/download/${fileId}/`;
+      
+      const response = await fetch(endpoint);
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();
@@ -227,46 +240,77 @@ export const FileUpload = () => {
           className="gap-2"
         >
           <List className="w-4 h-4" />
-          {showFilesList ? 'Hide' : 'Show'} Uploaded Files
+          {showFilesList ? 'Hide' : 'Show'} Files
         </Button>
       </div>
 
       {showFilesList && (
         <Card className="p-6 shadow-[var(--shadow-card)]">
-          <h3 className="text-lg font-semibold mb-4 text-card-foreground">Uploaded Files</h3>
+          <h3 className="text-lg font-semibold mb-4 text-card-foreground">Files</h3>
           {isLoadingFiles ? (
             <div className="flex justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
-          ) : filesList.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No files uploaded yet</p>
+          ) : filesList.length === 0 && outputFilesList.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">No files available yet</p>
           ) : (
-            <div className="space-y-2">
-              {filesList.map((file) => (
-                <div 
-                  key={file.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/5 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate text-card-foreground">{file.filename}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(file.upload_date).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => downloadFile(file.id, file.filename)}
-                    className="flex-shrink-0 gap-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </Button>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left p-3 font-semibold text-card-foreground">Input Files</th>
+                    <th className="text-left p-3 font-semibold text-card-foreground">Output Files</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: Math.max(filesList.length, outputFilesList.length) }).map((_, index) => (
+                    <tr key={index} className="border-b border-border hover:bg-accent/5 transition-colors">
+                      <td className="p-3">
+                        {filesList[index] ? (
+                          <button
+                            onClick={() => downloadFile(filesList[index].id, filesList[index].filename, 'input')}
+                            className="flex items-center gap-2 text-left hover:text-primary transition-colors w-full group"
+                          >
+                            <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-sm truncate text-card-foreground group-hover:underline">
+                                {filesList[index].filename}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(filesList[index].upload_date).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Download className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {outputFilesList[index] ? (
+                          <button
+                            onClick={() => downloadFile(outputFilesList[index].id, outputFilesList[index].filename, 'output')}
+                            className="flex items-center gap-2 text-left hover:text-primary transition-colors w-full group"
+                          >
+                            <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-sm truncate text-card-foreground group-hover:underline">
+                                {outputFilesList[index].filename}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(outputFilesList[index].upload_date).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Download className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>
