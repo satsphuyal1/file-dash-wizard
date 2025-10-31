@@ -17,6 +17,12 @@ interface UploadedFileInfo {
   size?: number;
 }
 
+interface ScrapRecord {
+  id: string;
+  status: string;
+  [key: string]: any;
+}
+
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export const FileUpload = () => {
@@ -26,6 +32,9 @@ export const FileUpload = () => {
   const [filesList, setFilesList] = useState<UploadedFileInfo[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [showFilesList, setShowFilesList] = useState(false);
+  const [scrapRecords, setScrapRecords] = useState<ScrapRecord[]>([]);
+  const [isPolling, setIsPolling] = useState(false);
+  const [currentFileId, setCurrentFileId] = useState<string | null>(null);
 
   const fetchFilesList = async () => {
     setIsLoadingFiles(true);
@@ -83,6 +92,51 @@ export const FileUpload = () => {
     });
   };
 
+  const fetchScrapRecords = async (fileId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/scrap_records/${fileId}/`);
+      if (!response.ok) throw new Error('Failed to fetch scrap records');
+      const data = await response.json();
+      setScrapRecords(data);
+      
+      // Check if all records have status "done"
+      const allDone = data.every((record: ScrapRecord) => record.status === 'done');
+      if (allDone) {
+        setIsPolling(false);
+        toast({
+          title: "Processing complete",
+          description: "All records have been processed",
+        });
+      }
+      
+      return allDone;
+    } catch (error: any) {
+      console.error('Error fetching scrap records:', error);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (isPolling && currentFileId) {
+      // Initial fetch
+      fetchScrapRecords(currentFileId);
+      
+      // Poll every 2 seconds
+      intervalId = setInterval(async () => {
+        const allDone = await fetchScrapRecords(currentFileId);
+        if (allDone && intervalId) {
+          clearInterval(intervalId);
+        }
+      }, 2000);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isPolling, currentFileId]);
+
   const uploadFile = async () => {
     if (!uploadedFile) return;
 
@@ -104,9 +158,12 @@ export const FileUpload = () => {
 
       const data = await response.json();
       setUploadSuccess(true);
+      setCurrentFileId(data.file_id || data.id);
+      setIsPolling(true);
+      
       toast({
         title: "File uploaded successfully",
-        description: `${uploadedFile.file.name} has been uploaded`,
+        description: `${uploadedFile.file.name} has been uploaded and processing started`,
       });
       
       // Refresh files list if it's visible
@@ -317,8 +374,48 @@ export const FileUpload = () => {
                       Upload Successful!
                     </h5>
                     <p className="text-sm text-muted-foreground">
-                      Your file has been uploaded to the server.
+                      Your file has been uploaded and is being processed.
                     </p>
+                  </div>
+                )}
+                
+                {scrapRecords.length > 0 && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="font-semibold text-sm text-card-foreground">
+                        Scrap Records {isPolling && <Loader2 className="inline w-3 h-3 ml-2 animate-spin" />}
+                      </h5>
+                      <span className="text-xs text-muted-foreground">
+                        {scrapRecords.filter(r => r.status === 'done').length} / {scrapRecords.length} completed
+                      </span>
+                    </div>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {scrapRecords.map((record) => (
+                        <div 
+                          key={record.id}
+                          className="p-3 rounded-lg border border-border bg-card"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-card-foreground">ID: {record.id}</span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              record.status === 'done' 
+                                ? 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]' 
+                                : 'bg-secondary text-secondary-foreground'
+                            }`}>
+                              {record.status}
+                            </span>
+                          </div>
+                          {Object.entries(record).map(([key, value]) => {
+                            if (key === 'id' || key === 'status') return null;
+                            return (
+                              <div key={key} className="text-xs text-muted-foreground mt-1">
+                                <span className="font-medium">{key}:</span> {String(value)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
