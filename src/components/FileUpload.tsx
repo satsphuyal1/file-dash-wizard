@@ -1,9 +1,9 @@
 import { useCallback, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Upload, File, CheckCircle2, X, Loader2, Download, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
@@ -21,10 +21,6 @@ interface FileRecord {
   status: string;
 }
 
-interface DetailedData {
-  [key: string]: any;
-}
-
 interface ScrapRecord {
   id: string;
   status: string;
@@ -34,6 +30,7 @@ interface ScrapRecord {
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export const FileUpload = () => {
+  const navigate = useNavigate();
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -43,9 +40,6 @@ export const FileUpload = () => {
   const [scrapRecords, setScrapRecords] = useState<ScrapRecord[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
-  const [selectedFileData, setSelectedFileData] = useState<DetailedData[] | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
   const fetchFilesList = async () => {
     setIsLoadingFiles(true);
@@ -65,24 +59,6 @@ export const FileUpload = () => {
     }
   };
 
-  const fetchFileDetail = async (fileId: number) => {
-    setIsLoadingDetail(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/files/data/${fileId}/`);
-      if (!response.ok) throw new Error('Failed to fetch file details');
-      const data = await response.json();
-      setSelectedFileData(data);
-      setIsModalOpen(true);
-    } catch (error: any) {
-      toast({
-        title: "Failed to load file details",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingDetail(false);
-    }
-  };
 
   useEffect(() => {
     if (showFilesList) {
@@ -331,8 +307,8 @@ export const FileUpload = () => {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    onClick={() => fetchFileDetail(record.id)}
-                                    disabled={record.status !== 'Completed' || isLoadingDetail}
+                                    onClick={() => navigate(`/file/${record.id}`)}
+                                    disabled={record.status !== 'Completed'}
                                     className={`h-8 w-8 ${
                                       record.status === 'Completed' 
                                         ? 'hover:bg-primary/10 hover:text-primary' 
@@ -539,44 +515,6 @@ export const FileUpload = () => {
           </div>
         </Card>
       )}
-
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[80vh]">
-            <DialogHeader>
-              <DialogTitle>File Details</DialogTitle>
-            </DialogHeader>
-            <ScrollArea className="h-[60vh]">
-              {selectedFileData && selectedFileData.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead className="sticky top-0 bg-card z-10">
-                      <tr className="border-b-2 border-border">
-                        {Object.keys(selectedFileData[0]).map((key) => (
-                          <th key={key} className="text-left p-3 font-semibold text-card-foreground bg-accent/5">
-                            {key}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedFileData.map((row, index) => (
-                        <tr key={index} className="border-b border-border hover:bg-accent/5 transition-colors">
-                          {Object.values(row).map((value, colIndex) => (
-                            <td key={colIndex} className="p-3 text-sm text-card-foreground">
-                              {String(value)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">No data available</p>
-              )}
-            </ScrollArea>
-          </DialogContent>
-        </Dialog>
       </div>
     </TooltipProvider>
   );
