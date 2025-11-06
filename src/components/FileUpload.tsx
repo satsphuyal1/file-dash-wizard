@@ -1,8 +1,11 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, File, CheckCircle2, X, Loader2, Download, List } from 'lucide-react';
+import { Upload, File, CheckCircle2, X, Loader2, Download, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
 
 interface UploadedFile {
@@ -10,12 +13,16 @@ interface UploadedFile {
   preview?: string;
 }
 
-interface UploadedFileInfo {
-  id: string;
-  filename?: string;
-  name?: string;
-  upload_date: string;
-  size?: number;
+interface FileRecord {
+  id: number;
+  input_filename: string;
+  output_filename: string | null;
+  created_date: string;
+  status: string;
+}
+
+interface DetailedData {
+  [key: string]: any;
 }
 
 interface ScrapRecord {
@@ -30,29 +37,23 @@ export const FileUpload = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [filesList, setFilesList] = useState<UploadedFileInfo[]>([]);
-  const [outputFilesList, setOutputFilesList] = useState<UploadedFileInfo[]>([]);
+  const [fileRecords, setFileRecords] = useState<FileRecord[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [showFilesList, setShowFilesList] = useState(false);
   const [scrapRecords, setScrapRecords] = useState<ScrapRecord[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
+  const [selectedFileData, setSelectedFileData] = useState<DetailedData[] | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
   const fetchFilesList = async () => {
     setIsLoadingFiles(true);
     try {
-      const [inputResponse, outputResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/files/`),
-        fetch(`${API_BASE_URL}/files/output/`)
-      ]);
-      
-      if (!inputResponse.ok || !outputResponse.ok) throw new Error('Failed to fetch files');
-      
-      const inputData = await inputResponse.json();
-      const outputData = await outputResponse.json();
-      
-      setFilesList(inputData);
-      setOutputFilesList(outputData);
+      const response = await fetch(`${API_BASE_URL}/files/`);
+      if (!response.ok) throw new Error('Failed to fetch files');
+      const data = await response.json();
+      setFileRecords(data);
     } catch (error: any) {
       toast({
         title: "Failed to load files",
@@ -61,6 +62,25 @@ export const FileUpload = () => {
       });
     } finally {
       setIsLoadingFiles(false);
+    }
+  };
+
+  const fetchFileDetail = async (fileId: number) => {
+    setIsLoadingDetail(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/data/${fileId}/`);
+      if (!response.ok) throw new Error('Failed to fetch file details');
+      const data = await response.json();
+      setSelectedFileData(data);
+      setIsModalOpen(true);
+    } catch (error: any) {
+      toast({
+        title: "Failed to load file details",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDetail(false);
     }
   };
 
@@ -192,13 +212,9 @@ export const FileUpload = () => {
     }
   };
 
-  const downloadFile = async (fileId: string, filename: string, type: 'input' | 'output' = 'input') => {
+  const downloadFile = async (fileId: number, filename: string) => {
     try {
-      const endpoint = type === 'output' 
-        ? `${API_BASE_URL}/download/output/${fileId}` 
-        : `${API_BASE_URL}/download/${fileId}/`;
-      
-      const response = await fetch(endpoint);
+      const response = await fetch(`${API_BASE_URL}/download/output/${fileId}`);
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();
@@ -232,90 +248,136 @@ export const FileUpload = () => {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
-      <div className="flex justify-end">
-        <Button 
-          onClick={() => setShowFilesList(!showFilesList)}
-          variant="outline"
-          className="gap-2"
-        >
-          <List className="w-4 h-4" />
-          {showFilesList ? 'Hide' : 'Show'} Files
-        </Button>
-      </div>
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
-      {showFilesList && (
-        <Card className="p-6 shadow-[var(--shadow-card)]">
-          <h3 className="text-lg font-semibold mb-4 text-card-foreground">Files</h3>
-          {isLoadingFiles ? (
-            <div className="flex justify-center p-8">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            </div>
-          ) : filesList.length === 0 && outputFilesList.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No files available yet</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left p-3 font-semibold text-card-foreground">Input Files</th>
-                    <th className="text-left p-3 font-semibold text-card-foreground">Output Files</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: Math.max(filesList.length, outputFilesList.length) }).map((_, index) => (
-                    <tr key={index} className="border-b border-border hover:bg-accent/5 transition-colors">
-                      <td className="p-3">
-                        {filesList[index] ? (
-                          <button
-                            onClick={() => downloadFile(filesList[index].id, filesList[index].filename || filesList[index].name || 'file', 'input')}
-                            className="flex items-center gap-2 text-left hover:text-primary transition-colors w-full group"
-                          >
-                            <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-sm truncate text-card-foreground group-hover:underline">
-                                {filesList[index].filename || filesList[index].name || 'Unknown file'}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(filesList[index].upload_date).toLocaleDateString()}
-                              </p>
+  return (
+    <TooltipProvider>
+      <div className="w-full max-w-6xl mx-auto space-y-6">
+        <div className="flex justify-end">
+          <Button 
+            onClick={() => setShowFilesList(!showFilesList)}
+            variant="outline"
+            className="gap-2"
+          >
+            <File className="w-4 h-4" />
+            {showFilesList ? 'Hide' : 'Show'} Output
+          </Button>
+        </div>
+
+        {showFilesList && (
+          <Card className="p-6 shadow-[var(--shadow-card)]">
+            <h3 className="text-lg font-semibold mb-4 text-card-foreground">Data Dashboard</h3>
+            {isLoadingFiles ? (
+              <div className="flex justify-center p-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : fileRecords.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">No files available yet</p>
+            ) : (
+              <ScrollArea className="h-[500px]">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="sticky top-0 bg-card z-10">
+                      <tr className="border-b-2 border-border">
+                        <th className="text-left p-3 font-semibold text-card-foreground">Input File</th>
+                        <th className="text-left p-3 font-semibold text-card-foreground">Output File</th>
+                        <th className="text-left p-3 font-semibold text-card-foreground">Created Date</th>
+                        <th className="text-left p-3 font-semibold text-card-foreground">Status</th>
+                        <th className="text-center p-3 font-semibold text-card-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fileRecords.map((record) => (
+                        <tr key={record.id} className="border-b border-border hover:bg-accent/5 transition-colors">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                              <span className="text-sm font-medium text-card-foreground">
+                                {record.input_filename}
+                              </span>
                             </div>
-                            <Download className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {outputFilesList[index] ? (
-                          <button
-                            onClick={() => downloadFile(outputFilesList[index].id, outputFilesList[index].filename || outputFilesList[index].name || 'output', 'output')}
-                            className="flex items-center gap-2 text-left hover:text-primary transition-colors w-full group"
-                          >
-                            <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-sm truncate text-card-foreground group-hover:underline">
-                                {outputFilesList[index].filename || outputFilesList[index].name || 'Unknown file'}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(outputFilesList[index].upload_date).toLocaleDateString()}
-                              </p>
+                          </td>
+                          <td className="p-3">
+                            <span className="text-sm text-card-foreground">
+                              {record.output_filename || '-'}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className="text-sm text-muted-foreground">
+                              {formatDate(record.created_date)}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              record.status === 'Completed' 
+                                ? 'bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))]' 
+                                : 'bg-secondary text-secondary-foreground'
+                            }`}>
+                              {record.status}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => fetchFileDetail(record.id)}
+                                    disabled={record.status !== 'Completed' || isLoadingDetail}
+                                    className={`h-8 w-8 ${
+                                      record.status === 'Completed' 
+                                        ? 'hover:bg-primary/10 hover:text-primary' 
+                                        : 'opacity-40 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{record.status === 'Completed' ? 'View Details' : 'Not Available'}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                              
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => record.output_filename && downloadFile(record.id, record.output_filename)}
+                                    disabled={record.status !== 'Completed' || !record.output_filename}
+                                    className={`h-8 w-8 ${
+                                      record.status === 'Completed' && record.output_filename
+                                        ? 'hover:bg-primary/10 hover:text-primary' 
+                                        : 'opacity-40 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{record.status === 'Completed' && record.output_filename ? 'Download' : 'Not Available'}</p>
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
-                            <Download className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </ScrollArea>
+            )}
+          </Card>
+        )}
       {!uploadedFile ? (
         <Card
           {...getRootProps()}
@@ -477,6 +539,45 @@ export const FileUpload = () => {
           </div>
         </Card>
       )}
-    </div>
+
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh]">
+            <DialogHeader>
+              <DialogTitle>File Details</DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="h-[60vh]">
+              {selectedFileData && selectedFileData.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="sticky top-0 bg-card z-10">
+                      <tr className="border-b-2 border-border">
+                        {Object.keys(selectedFileData[0]).map((key) => (
+                          <th key={key} className="text-left p-3 font-semibold text-card-foreground bg-accent/5">
+                            {key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedFileData.map((row, index) => (
+                        <tr key={index} className="border-b border-border hover:bg-accent/5 transition-colors">
+                          {Object.values(row).map((value, colIndex) => (
+                            <td key={colIndex} className="p-3 text-sm text-card-foreground">
+                              {String(value)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No data available</p>
+              )}
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 };
